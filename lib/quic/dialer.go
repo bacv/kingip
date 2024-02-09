@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"time"
 
 	proto "github.com/bacv/kingip/lib/proto"
 	"github.com/bacv/kingip/lib/transport"
@@ -34,12 +35,12 @@ func NewDialer(
 }
 
 func (s *Dialer) Dial(ctx context.Context) error {
-	conn, err := quic.DialAddr(
+	ctx, cancel := context.WithCancel(ctx)
+
+	conn, err := quic.DialAddrEarly(
 		ctx, s.config.Addr.String(),
 		TlsClientConfig.Clone(),
-		&quic.Config{
-			KeepAlivePeriod: 1,
-		},
+		&quic.Config{},
 	)
 	if err != nil {
 		return err
@@ -61,8 +62,11 @@ func (s *Dialer) Dial(ctx context.Context) error {
 		return err
 	}
 
+	pingStream, err := conn.AcceptStream(context.Background())
+	go s.pong(pingStream, cancel)
+
 	// Listen for new streams comming from the server.
-	return s.listenStreams(conn)
+	return s.listenStreams(ctx, conn)
 }
 
 func (s *Dialer) handleConfig(w transport.ResponseWriter, r proto.Message) error {
@@ -79,9 +83,9 @@ func (s *Dialer) handleConfig(w transport.ResponseWriter, r proto.Message) error
 	return nil
 }
 
-func (s *Dialer) listenStreams(conn quic.Connection) error {
+func (s *Dialer) listenStreams(ctx context.Context, conn quic.Connection) error {
 	for {
-		stream, err := conn.AcceptStream(context.Background())
+		stream, err := conn.AcceptStream(ctx)
 		if err != nil {
 			return err
 		}
@@ -92,4 +96,38 @@ func (s *Dialer) listenStreams(conn quic.Connection) error {
 			}
 		}()
 	}
+}
+
+func (s *Dialer) pong(pingStream quic.Stream, cancel context.CancelFunc) error {
+	pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
+
+	if _, err := SyncTransport(pingStream, pingHandler, nil); err != nil {
+		return err
+	}
+
+	go func() {
+		defer cancel()
+		for {
+			pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
+			if _, err := SyncTransport(pingStream, pingHandler, nil); err != nil {
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+func pingHandler(w transport.ResponseWriter, r proto.Message) error {
+	mt, id, err := r.UnmarshalString()
+	if err != nil {
+		return err
+	}
+
+	if proto.MsgPing != mt {
+		return errors.New("Wrong protocol message")
+	}
+
+	w.Write(proto.NewMsgPing(id))
+	return nil
 }

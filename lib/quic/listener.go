@@ -2,10 +2,12 @@ package quic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"time"
 
 	proto "github.com/bacv/kingip/lib/proto"
 	"github.com/bacv/kingip/lib/transport"
@@ -43,9 +45,7 @@ func NewListener(
 }
 
 func (s *Listener) Listen() error {
-	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{
-		KeepAlivePeriod: 1,
-	})
+	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{})
 	if err != nil {
 		return err
 	}
@@ -56,19 +56,39 @@ func (s *Listener) Listen() error {
 			continue
 		}
 
-		go func() {
-			id, stopC, err := s.handleConn(conn)
-			if err != nil {
-				log.Println("Failed to handle conn: ", err)
-			}
-
-			if err := <-stopC; err != nil {
-				log.Println("Relay closed with err: ", err)
-			}
-
-			s.closeHandler(id)
-		}()
+		go s.acceptConn(conn)
 	}
+}
+
+func (s *Listener) acceptConn(conn quic.Connection) {
+	pingStream, err := conn.OpenStream()
+	if err != nil {
+		log.Println("Failed to open ping stream: ", err)
+		return
+	}
+
+	id, stopC, err := s.handleConn(conn)
+	if err != nil {
+		log.Println("Failed to handle conn: ", err)
+		return
+	}
+
+	pingC, err := s.ping(id, pingStream)
+	if err != nil {
+		log.Println("Failed to spawn ping", err)
+		return
+	}
+
+	select {
+	case <-pingC:
+		log.Println("Ping timeout")
+	case err := <-stopC:
+		if err != nil {
+			log.Println("Relay closed with err: ", err)
+		}
+	}
+
+	s.closeHandler(id)
 }
 
 func (s *Listener) handleConn(conn quic.Connection) (uint64, <-chan error, error) {
@@ -121,5 +141,45 @@ func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
 	}
 
 	t.Close()
+	return nil
+}
+
+func (s *Listener) ping(id uint64, pingStream quic.Stream) (<-chan struct{}, error) {
+	stopC := make(chan struct{})
+	pingStream.SetReadDeadline(time.Now().Add(time.Second))
+
+	// First ping needs to be sent right away to "claim" this stream.
+	if _, err := SyncTransport(pingStream, pingHandler, proto.NewMsgPing(string(id))); err != nil {
+		return nil, err
+	}
+
+	go func() {
+		defer close(stopC)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+
+		for {
+			<-ticker.C
+
+			pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
+			if _, err := SyncTransport(pingStream, pongHandler, proto.NewMsgPing(string(id))); err != nil {
+				return
+			}
+		}
+	}()
+
+	return stopC, nil
+}
+
+func pongHandler(w transport.ResponseWriter, r proto.Message) error {
+	mt, _, err := r.UnmarshalString()
+	if err != nil {
+		return err
+	}
+
+	if proto.MsgPing != mt {
+		return errors.New("Wrong protocol message")
+	}
+
 	return nil
 }

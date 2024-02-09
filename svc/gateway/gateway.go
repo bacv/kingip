@@ -41,6 +41,10 @@ func (r *relayConn) openStream() (quic.Stream, error) {
 	return r.conn.OpenStream()
 }
 
+func (r *relayConn) stop() {
+	close(r.stopC)
+}
+
 type Gateway struct {
 	store      svc.UserStore
 	relayConns map[svc.RelayID]*relayConn
@@ -70,7 +74,6 @@ func (g *Gateway) CloseHandle(id uint64) {
 	for _, region := range regions {
 		g.regions.Remove(region, id)
 	}
-	println("<<<<<<<<")
 }
 
 func (g *Gateway) AuthHandle(name, password string) error {
@@ -94,14 +97,17 @@ func (g *Gateway) SessionHandle(destination svc.Destination, region svc.Region, 
 
 	relayStream, err := g.openStream(svc.RelayID(relayId))
 	if err != nil {
+		g.stopRelay(svc.RelayID(relayId))
 		return err
 	}
 
-	_, err = quic_kingip.SyncTransport(
+	if _, err = quic_kingip.SyncTransport(
 		relayStream,
 		g.handleProxyInit,
 		proto.NewMsgGatewayProxy(string(destination), string(region)),
-	)
+	); err != nil {
+		return err
+	}
 
 	go transferData(userConn, relayStream)
 	transferData(relayStream, userConn)
@@ -149,9 +155,19 @@ func (g *Gateway) registerRelay(conn quic.Connection) (svc.RelayID, chan error) 
 	return svc.RelayID(0), nil
 }
 
+func (g *Gateway) stopRelay(id svc.RelayID) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if relay, ok := g.relayConns[id]; ok {
+		relay.stop()
+	}
+}
+
 func (g *Gateway) closeRelay(id svc.RelayID) []svc.Region {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
 	if relay, ok := g.relayConns[id]; ok {
 		regions := relay.getRegions()
 		delete(g.relayConns, id)

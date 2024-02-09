@@ -18,6 +18,7 @@ const (
 	MsgRelayConfig  = MessageType(0x02)
 	MsgGatewayProxy = MessageType(0x03)
 
+	MsgPing    = MessageType(0xFD)
 	MsgSuccess = MessageType(0xFE)
 	MsgError   = MessageType(0xFF)
 
@@ -29,7 +30,7 @@ var ErrorMessageTypeNotMap = errors.New("Invalid message type for map")
 
 func (m MessageType) Validate() error {
 	switch m {
-	case MsgRelayHello, MsgRelayConfig, MsgGatewayProxy, MsgSuccess, MsgError:
+	case MsgRelayHello, MsgRelayConfig, MsgGatewayProxy, MsgSuccess, MsgError, MsgPing:
 		return nil
 	default:
 		return ErrorMessageTypeUnknown
@@ -131,7 +132,13 @@ func NewMsgSuccess() Message {
 	m, _ := newMessageString(MsgSuccess, "")
 	return m
 }
+
 func NewMsgError(err string) Message {
 	m, _ := newMessageString(MsgError, err)
+	return m
+}
+
+func NewMsgPing(id string) Message {
+	m, _ := newMessageString(MsgPing, id)
 	return m
 }

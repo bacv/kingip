@@ -6,6 +6,7 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// Sends message, handles response and abandons the connection.
 func SyncTransport(stream quic.Stream, handler transport.HandleFunc, msg proto.Message) (*transport.Transport, error) {
 	transport := transport.NewTransport(stream, handler)
 	defer transport.Abandon()
