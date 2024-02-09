@@ -1,18 +1,19 @@
 package svc
 
-import "io"
+import (
+	"io"
+
+	"github.com/quic-go/quic-go"
+)
 
 type RelayID uint64
 
-type ReaderWriter interface {
-	io.Writer
+type Client interface {
 	io.Reader
-}
-
-type ClientReaderWriter interface {
-	ReaderWriter
+	io.Writer
+	Close() error
 	ID() ClientID
 }
 
-type RelayGatewayHandleFunc func(ReaderWriter) error
-type RelayClientHandleFunc func(ClientReaderWriter) error
+type RelayGatewayHandleFunc func(quic.Stream) error
+type RelayClientHandleFunc func(Client) error

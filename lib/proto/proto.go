@@ -18,6 +18,9 @@ const (
 	MsgRelayConfig  = MessageType(0x02)
 	MsgGatewayProxy = MessageType(0x03)
 
+	MsgSuccess = MessageType(0xFE)
+	MsgError   = MessageType(0xFF)
+
 	KingIP = "king-ip"
 )
 
@@ -26,7 +29,7 @@ var ErrorMessageTypeNotMap = errors.New("Invalid message type for map")
 
 func (m MessageType) Validate() error {
 	switch m {
-	case MsgRelayHello, MsgRelayConfig, MsgGatewayProxy:
+	case MsgRelayHello, MsgRelayConfig, MsgGatewayProxy, MsgSuccess, MsgError:
 		return nil
 	default:
 		return ErrorMessageTypeUnknown
@@ -116,7 +119,19 @@ func NewMsgRelayConfig(id string) Message {
 	return m
 }
 
-func NewMsgGatewayProxy(destination string) Message {
-	m, _ := newMessageString(MsgGatewayProxy, destination)
+func NewMsgGatewayProxy(destination, region string) Message {
+	m, _ := newMessageMap(MsgGatewayProxy, map[string]string{
+		"destination": destination,
+		"region":      region,
+	})
+	return m
+}
+
+func NewMsgSuccess() Message {
+	m, _ := newMessageString(MsgSuccess, "")
+	return m
+}
+func NewMsgError(err string) Message {
+	m, _ := newMessageString(MsgError, err)
 	return m
 }

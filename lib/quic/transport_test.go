@@ -14,10 +14,14 @@ import (
 func TestTransportWriteToClosed(t *testing.T) {
 	conn, _ := net.Pipe()
 
-	transport := NewTransport(conn, func(w ResponseWriter, r proto.Message) {})
+	transport := NewTransport(conn, func(w ResponseWriter, r proto.Message) error {
+		return nil
+	})
+
 	go func() {
 		transport.Spawn()
 	}()
+
 	transport.Close()
 	conn.Close()
 
@@ -31,11 +35,11 @@ func TestTransportHandler(t *testing.T) {
 	connA, connB := net.Pipe()
 
 	var sErr error
-	serverHandler := func(w ResponseWriter, r proto.Message) {
+	serverHandler := func(w ResponseWriter, r proto.Message) error {
 		mt, err := r.Type()
 		if err != nil {
 			sErr = err
-			return
+			return err
 		}
 
 		switch mt {
@@ -50,15 +54,16 @@ func TestTransportHandler(t *testing.T) {
 
 			w.Write(proto.NewMsgRelayConfig("1234"))
 		}
+		return nil
 	}
 
 	var cErr error
 	var result string
-	clientHandler := func(w ResponseWriter, r proto.Message) {
+	clientHandler := func(w ResponseWriter, r proto.Message) error {
 		mt, err := r.Type()
 		if err != nil {
 			cErr = err
-			return
+			return err
 		}
 
 		switch mt {
@@ -70,7 +75,7 @@ func TestTransportHandler(t *testing.T) {
 			result = config
 			w.Close()
 		}
-
+		return nil
 	}
 
 	tA := NewTransport(connA, serverHandler)

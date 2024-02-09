@@ -66,7 +66,7 @@ func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx) {
 	ctx.Response.SetBody(nil)
 
 	ctx.Hijack(func(userConn net.Conn) {
-		s.sessionHandler(s.config.Region, userConn)
+		s.sessionHandler("", s.config.Region, userConn)
 	})
 }
 

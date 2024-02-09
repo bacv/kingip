@@ -82,20 +82,20 @@ func (s *Server) handleRelayConn(conn quic.Connection) error {
 }
 
 func (s *Server) handleHelloStream(relayId svc.RelayID, stream quic.Stream) error {
-	handleHello := func(w quic_kingip.ResponseWriter, r proto.Message) {
+	handleHello := func(w quic_kingip.ResponseWriter, r proto.Message) error {
 		mt, regions, err := r.UnmarshalMap()
 		if err != nil {
-			log.Println("Failed to parse relay hello: ", err)
-			return
+			return err
 		}
 
-		if proto.MsgRelayHello == mt {
-			s.regionsHandler(relayId, regions)
-			log.Println("Got relay with regions: ", regions)
-			w.Write(proto.NewMsgRelayConfig(fmt.Sprint(relayId)))
-		} else {
+		if proto.MsgRelayHello != mt {
 			log.Println("Wrong protocol message")
 		}
+
+		s.regionsHandler(relayId, regions)
+		log.Println("Got relay with regions: ", regions)
+		w.Write(proto.NewMsgRelayConfig(fmt.Sprint(relayId)))
+		return nil
 	}
 
 	transport := quic_kingip.NewTransport(stream, handleHello)

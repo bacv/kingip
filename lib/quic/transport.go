@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/bacv/kingip/lib/proto"
+	"github.com/quic-go/quic-go"
 )
 
 var (
@@ -25,7 +26,7 @@ type ResponseWriter interface {
 	Close()
 }
 
-type HandleFunc func(ResponseWriter, proto.Message)
+type HandleFunc func(ResponseWriter, proto.Message) error
 
 type Transport struct {
 	conn      Conn
@@ -56,12 +57,21 @@ func (t *Transport) Spawn() error {
 	return err
 }
 
+func (t *Transport) Sync() error {
+	bytes, err := bufio.NewReader(t.conn).ReadBytes(proto.ByteLF)
+	if err != nil {
+		return err
+	}
+
+	return t.handler(t, proto.Message(bytes))
+}
+
 // Closes transport **AND** underlying connection.
 func (t *Transport) Close() {
 	t.closeOnce.Do(func() {
 		t.close()
-		t.conn.Close()
 	})
+	t.conn.Close()
 }
 
 // Abandons connection and closes the transport.
@@ -111,4 +121,12 @@ func (t *Transport) read(errC chan<- error) {
 			t.handler(t, proto.Message(bytes))
 		}
 	}
+}
+
+func SyncTransport(stream quic.Stream, handler HandleFunc, msg proto.Message) (*Transport, error) {
+	transport := NewTransport(stream, handler)
+	defer transport.Abandon()
+
+	transport.Write(msg)
+	return transport, transport.Sync()
 }

@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net"
 
@@ -44,7 +45,11 @@ func NewServer(
 }
 
 func (s *Server) DialGateway(ctx context.Context) error {
-	conn, err := quic.DialAddrEarly(ctx, s.config.DialGatewayAddr.String(), quic_kingip.TlsClientConfig.Clone(), nil)
+	conn, err := quic.DialAddrEarly(
+		ctx, s.config.DialGatewayAddr.String(),
+		quic_kingip.TlsClientConfig.Clone(),
+		nil,
+	)
 	if err != nil {
 		return err
 	}
@@ -55,49 +60,44 @@ func (s *Server) DialGateway(ctx context.Context) error {
 	}
 
 	// Register relay on gateway to receive configuration.
-	if err := s.handleConfigStream(configStream); err != nil {
+	transport, err := quic_kingip.SyncTransport(
+		configStream,
+		s.handleConfig,
+		proto.NewMsgRelayHello(s.config.Regions),
+	)
+	transport.Close()
+
+	if err != nil {
 		return err
 	}
 
 	// Listen for new streams comming from gateway.
-	return s.handleGatewayProxyStreams(conn)
+	return s.listenGatewayStreams(conn)
 }
 
-func (s *Server) handleConfigStream(stream quic.Stream) error {
-	transport := quic_kingip.NewTransport(stream, s.handleConfig)
-	defer transport.Close()
-
-	transport.Write(proto.NewMsgRelayHello(s.config.Regions))
-	return transport.Spawn()
-}
-
-func (s *Server) handleConfig(w quic_kingip.ResponseWriter, r proto.Message) {
-	defer w.Close()
-
+func (s *Server) handleConfig(w quic_kingip.ResponseWriter, r proto.Message) error {
 	mt, id, err := r.UnmarshalString()
 	if err != nil {
-		log.Println("Failed to parse configuration: ", err)
-		return
+		return err
 	}
 
-	if proto.MsgRelayConfig == mt {
-		log.Println("Got id from gateway: ", id)
-		//s.gateways[s.config.DialGatewayAddr.String()] = svc.RelayID(id)
-	} else {
-		log.Println("Wrong protocol message")
+	if proto.MsgRelayConfig != mt {
+		errors.New("Wrong protocol message")
 	}
+
+	log.Println("Got id from gateway: ", id)
+	return nil
 }
 
-func (s *Server) handleGatewayProxyStreams(conn quic.Connection) error {
+func (s *Server) listenGatewayStreams(conn quic.Connection) error {
 	for {
-		stream, err := conn.AcceptStream(context.Background())
+		proxyStream, err := conn.AcceptStream(context.Background())
 		if err != nil {
 			return err
 		}
 
 		go func() {
-			err := s.gatewayHandler(stream)
-			if err != nil {
+			if err := s.gatewayHandler(proxyStream); err != nil {
 				log.Print(err)
 			}
 		}()

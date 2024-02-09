@@ -20,9 +20,10 @@ type SessionReaderWriter interface {
 	ID() SessionID
 }
 
+type Destination string
 type Region string
 
 type GatewayAuthHandleFunc func(string, string) error
 type GatewayRelayRegisterHandleFunc func(quic.Connection) (RelayID, <-chan error, error)
 type GatewayRelayRegionsHandleFunc func(RelayID, map[string]string) error
-type GatewaySessionHandleFunc func(Region, Conn) error
+type GatewaySessionHandleFunc func(Destination, Region, Conn) error
