@@ -7,6 +7,7 @@ import (
 	"net"
 
 	proto "github.com/bacv/kingip/lib/proto"
+	"github.com/bacv/kingip/lib/transport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -62,7 +63,7 @@ func (s *Dialer) Dial(ctx context.Context) error {
 	return s.listenStreams(conn)
 }
 
-func (s *Dialer) handleConfig(w ResponseWriter, r proto.Message) error {
+func (s *Dialer) handleConfig(w transport.ResponseWriter, r proto.Message) error {
 	mt, id, err := r.UnmarshalString()
 	if err != nil {
 		return err

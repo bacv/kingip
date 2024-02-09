@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc/relay"
 	"github.com/namsral/flag"
 )
@@ -15,34 +16,53 @@ func main() {
 	log.SetOutput(os.Stdout)
 	flag.Parse()
 
-	gatewayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4242")
+	dialGatewayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	listenRelayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:5555")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	handler := relay.NewRelay()
 
-	config := relay.Config{
-		DialGatewayAddr:  gatewayAddr,
-		ListenClientAddr: gatewayAddr,
+	dialerConfig := quic.DialerConfig{
+		Addr: dialGatewayAddr,
 		Regions: map[string]string{
 			"blue": "http://blue.com",
 			"red":  "http://red.com",
 		},
 	}
 
-	server := relay.NewServer(
-		config,
-		handler.ClientHandle,
-		handler.GatewayHandle,
+	dialer := quic.NewDialer(dialerConfig, handler.GatewayHandle)
+
+	listenerConfig := quic.ListenerConfig{
+		Addr: listenRelayAddr,
+	}
+
+	listener := quic.NewListener(
+		context.Background(),
+		listenerConfig,
+		handler.RegisterHandle,
+		handler.RegionsHandle,
 	)
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		err := server.DialGateway(context.Background())
+		err := dialer.Dial(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		err := listener.Listen()
 		if err != nil {
 			log.Fatal(err)
 		}

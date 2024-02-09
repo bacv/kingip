@@ -3,7 +3,6 @@ package gateway
 import (
 	"bufio"
 	"encoding/base64"
-	"fmt"
 	"net"
 	"regexp"
 	"strings"
@@ -64,58 +63,59 @@ func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
 func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx) {
 	ctx.Response.SetStatusCode(fasthttp.StatusOK)
 	ctx.Response.SetBody(nil)
+	host := string(ctx.Host())
 
 	ctx.Hijack(func(userConn net.Conn) {
-		s.sessionHandler("", s.config.Region, userConn)
+		s.sessionHandler(svc.Destination(host), s.config.Region, userConn)
 	})
 }
 
 func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx) {
-	destHost := string(ctx.Request.URI().Host())
-
-	re := regexp.MustCompile(`:\d+$`)
-	if !re.MatchString(destHost) {
-		destHost = fmt.Sprintf("%s:80", destHost)
+	host := string(ctx.Request.URI().Host())
+	if !regexp.MustCompile(`:\d+$`).MatchString(host) {
+		host += ":80"
 	}
 
-	destConn, err := net.Dial("tcp", destHost)
-	if err != nil {
-		ctx.Logger().Printf("Error connecting to destination [%s]: %v", destHost, err)
+	pipeConn, txConn := net.Pipe()
+	defer pipeConn.Close()
+
+	bufWriter := bufio.NewWriter(pipeConn)
+	defer bufWriter.Flush()
+
+	go s.sessionHandler(svc.Destination(host), s.config.Region, txConn)
+
+	if err := streamRequest(ctx, bufWriter); err != nil {
+		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
+		return
+	}
+
+	if err := readResponse(ctx, bufio.NewReader(pipeConn)); err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusServiceUnavailable)
 		return
 	}
-	defer destConn.Close()
+}
 
-	bufWriter := bufio.NewWriter(destConn)
-	defer bufWriter.Flush()
+func streamRequest(ctx *fasthttp.RequestCtx, w *bufio.Writer) error {
+	defer w.Flush()
 
 	stripProxyHeaders(&ctx.Request)
 
-	err = ctx.Request.Write(bufWriter)
-	if err != nil {
-		ctx.Logger().Printf("Error streaming request to destination: %v", err)
-		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
-		return
+	if err := ctx.Request.Write(w); err != nil {
+		return err
 	}
+	return nil
+}
 
-	err = bufWriter.Flush()
-	if err != nil {
-		ctx.Logger().Printf("Error flushing buffer to destination: %v", err)
-		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
-		return
-	}
-
+func readResponse(ctx *fasthttp.RequestCtx, rd *bufio.Reader) error {
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(resp)
 
-	err = resp.Read(bufio.NewReader(destConn))
-	if err != nil {
-		ctx.Logger().Printf("Error reading response from destination: %v", err)
-		ctx.Response.SetStatusCode(fasthttp.StatusServiceUnavailable)
-		return
+	if err := resp.Read(rd); err != nil {
+		return err
 	}
 
 	resp.CopyTo(&ctx.Response)
+	return nil
 }
 
 func parseBasicAuth(ctx *fasthttp.RequestCtx) (username, password string, ok bool) {

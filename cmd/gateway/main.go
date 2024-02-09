@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc"
 	"github.com/bacv/kingip/svc/gateway"
 	"github.com/bacv/kingip/svc/store"
@@ -25,7 +26,7 @@ func main() {
 
 	handler := gateway.NewGateway(userStore)
 
-	listenRelayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4242")
+	listenRelayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func main() {
 	// 	log.Fatal(err)
 	// }
 
-	serverConfig := gateway.ServerConfig{
+	listenerConfig := quic.ListenerConfig{
 		Addr: listenRelayAddr,
 	}
 
@@ -59,16 +60,12 @@ func main() {
 		Addr:   listenUserRedAddr,
 	}
 
-	server, err := gateway.NewServer(
+	listener := quic.NewListener(
 		context.Background(),
-		serverConfig,
+		listenerConfig,
 		handler.RegisterHandle,
 		handler.RegionsHandle,
 	)
-
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	proxy, err := gateway.NewProxyServer(
 		proxyConfig,
@@ -82,16 +79,15 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		err := server.ListenRelay()
+		err := listener.Listen()
 		if err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		err := proxy.ListenUser()

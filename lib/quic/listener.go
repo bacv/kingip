@@ -8,6 +8,7 @@ import (
 	"net"
 
 	proto "github.com/bacv/kingip/lib/proto"
+	"github.com/bacv/kingip/lib/transport"
 	"github.com/quic-go/quic-go"
 )
 
@@ -81,7 +82,7 @@ func (s *Listener) handleConn(conn quic.Connection) error {
 }
 
 func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
-	handleHello := func(w ResponseWriter, r proto.Message) error {
+	handleHello := func(w transport.ResponseWriter, r proto.Message) error {
 		mt, regions, err := r.UnmarshalMap()
 		if err != nil {
 			return err
@@ -97,7 +98,7 @@ func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
 		return nil
 	}
 
-	transport := NewTransport(stream, handleHello)
+	transport := transport.NewTransport(stream, handleHello)
 	defer transport.Abandon()
 
 	return transport.Spawn()

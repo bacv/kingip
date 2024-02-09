@@ -8,6 +8,7 @@ import (
 
 	"github.com/bacv/kingip/lib/proto"
 	quic_kingip "github.com/bacv/kingip/lib/quic"
+	"github.com/bacv/kingip/lib/transport"
 	"github.com/bacv/kingip/svc"
 	"github.com/quic-go/quic-go"
 )
@@ -40,13 +41,13 @@ func NewGateway(store svc.UserStore) *Gateway {
 	}
 }
 
-func (g *Gateway) RegisterHandle(conn quic.Connection) (svc.RelayID, <-chan error, error) {
+func (g *Gateway) RegisterHandle(conn quic.Connection) (uint64, <-chan error, error) {
 	relayId, stopC := g.registerRelay(conn)
-	return relayId, stopC, nil
+	return uint64(relayId), stopC, nil
 }
 
-func (g *Gateway) RegionsHandle(relayId svc.RelayID, regions map[string]string) error {
-	return g.registerRegions(relayId, regions)
+func (g *Gateway) RegionsHandle(id uint64, regions map[string]string) error {
+	return g.registerRegions(svc.RelayID(id), regions)
 }
 
 func (g *Gateway) AuthHandle(name, password string) error {
@@ -68,24 +69,24 @@ func (g *Gateway) SessionHandle(destination svc.Destination, region svc.Region, 
 		return errors.New("No relay in region")
 	}
 
-	stream, err := g.openStream(svc.RelayID(relayId))
+	relayStream, err := g.openStream(svc.RelayID(relayId))
 	if err != nil {
 		return err
 	}
 
 	_, err = quic_kingip.SyncTransport(
-		stream,
+		relayStream,
 		g.handleProxyInit,
 		proto.NewMsgGatewayProxy(string(destination), string(region)),
 	)
 
-	go transferData(stream, userConn)
-	transferData(userConn, stream)
+	go transferData(userConn, relayStream)
+	transferData(relayStream, userConn)
 
 	return nil
 }
 
-func (g *Gateway) handleProxyInit(w quic_kingip.ResponseWriter, r proto.Message) error {
+func (g *Gateway) handleProxyInit(w transport.ResponseWriter, r proto.Message) error {
 	mt, _, err := r.UnmarshalString()
 	if err != nil {
 		return err

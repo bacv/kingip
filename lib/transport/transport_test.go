@@ -1,4 +1,4 @@
-package quic
+package transport
 
 import (
 	"errors"

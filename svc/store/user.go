@@ -6,7 +6,7 @@ import (
 	"github.com/bacv/kingip/svc"
 )
 
-// MockUserStore is a mock implementation of UserStore for testing purposes
+// MockUserStore is a mock implementation of UserStore for testing purposes.
 type MockUserStore struct {
 	Users         map[svc.UserAuth]*svc.User
 	SessionCounts map[svc.UserID]uint16
