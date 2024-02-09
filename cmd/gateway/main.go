@@ -65,6 +65,7 @@ func main() {
 		listenerConfig,
 		handler.RegisterHandle,
 		handler.RegionsHandle,
+		handler.CloseHandle,
 	)
 
 	proxy, err := gateway.NewProxyServer(

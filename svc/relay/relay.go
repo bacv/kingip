@@ -50,6 +50,9 @@ func (g *Relay) RegionsHandle(id uint64, regions map[string]string) error {
 	return g.registerRegions(svc.EdgeID(id), regions)
 }
 
+func (g *Relay) CloseHandle(id uint64) {
+}
+
 func (r *Relay) GatewayHandle(gatewayStream quic.Stream) error {
 	// Receive proxy destination and region
 	destination, region, err := getProxyDetails(gatewayStream)

@@ -34,10 +34,12 @@ func NewDialer(
 }
 
 func (s *Dialer) Dial(ctx context.Context) error {
-	conn, err := quic.DialAddrEarly(
+	conn, err := quic.DialAddr(
 		ctx, s.config.Addr.String(),
 		TlsClientConfig.Clone(),
-		nil,
+		&quic.Config{
+			KeepAlivePeriod: 1,
+		},
 	)
 	if err != nil {
 		return err

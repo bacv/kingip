@@ -47,6 +47,7 @@ func main() {
 		listenerConfig,
 		handler.RegisterHandle,
 		handler.RegionsHandle,
+		handler.CloseHandle,
 	)
 
 	var wg sync.WaitGroup

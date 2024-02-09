@@ -14,9 +14,24 @@ import (
 )
 
 type relayConn struct {
-	conn  quic.Connection
-	stopC chan error
-	mu    sync.Mutex
+	conn    quic.Connection
+	stopC   chan error
+	regions []svc.Region
+	mu      sync.Mutex
+}
+
+func (r *relayConn) updateRegions(regions []svc.Region) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.regions = regions
+}
+
+func (r *relayConn) getRegions() []svc.Region {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.regions
 }
 
 func (r *relayConn) openStream() (quic.Stream, error) {
@@ -48,6 +63,14 @@ func (g *Gateway) RegisterHandle(conn quic.Connection) (uint64, <-chan error, er
 
 func (g *Gateway) RegionsHandle(id uint64, regions map[string]string) error {
 	return g.registerRegions(svc.RelayID(id), regions)
+}
+
+func (g *Gateway) CloseHandle(id uint64) {
+	regions := g.closeRelay(svc.RelayID(id))
+	for _, region := range regions {
+		g.regions.Remove(region, id)
+	}
+	println("<<<<<<<<")
 }
 
 func (g *Gateway) AuthHandle(name, password string) error {
@@ -126,10 +149,29 @@ func (g *Gateway) registerRelay(conn quic.Connection) (svc.RelayID, chan error) 
 	return svc.RelayID(0), nil
 }
 
+func (g *Gateway) closeRelay(id svc.RelayID) []svc.Region {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if relay, ok := g.relayConns[id]; ok {
+		regions := relay.getRegions()
+		delete(g.relayConns, id)
+		return regions
+	}
+
+	return nil
+}
+
 func (g *Gateway) registerRegions(relayId svc.RelayID, regions map[string]string) error {
+	var relayRegions []svc.Region
 	for region, _ := range regions {
 		g.regions.Add(svc.Region(region), uint64(relayId))
+		relayRegions = append(relayRegions, svc.Region(region))
 	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.relayConns[relayId].updateRegions(relayRegions)
 	return nil
 }
 

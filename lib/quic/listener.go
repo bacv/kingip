@@ -14,6 +14,7 @@ import (
 
 type ListenerRegisterHandleFunc func(quic.Connection) (uint64, <-chan error, error)
 type ListenerRegionsHandleFunc func(uint64, map[string]string) error
+type ListenerCloseHandleFunc func(uint64)
 
 type ListenerConfig struct {
 	Addr net.Addr
@@ -23,6 +24,7 @@ type Listener struct {
 	config          ListenerConfig
 	registerHandler ListenerRegisterHandleFunc
 	regionsHandler  ListenerRegionsHandleFunc
+	closeHandler    ListenerCloseHandleFunc
 }
 
 func NewListener(
@@ -30,16 +32,20 @@ func NewListener(
 	config ListenerConfig,
 	registerHandler ListenerRegisterHandleFunc,
 	regionsHandler ListenerRegionsHandleFunc,
+	closeHandler ListenerCloseHandleFunc,
 ) *Listener {
 	return &Listener{
 		config:          config,
 		registerHandler: registerHandler,
 		regionsHandler:  regionsHandler,
+		closeHandler:    closeHandler,
 	}
 }
 
 func (s *Listener) Listen() error {
-	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), nil)
+	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{
+		KeepAlivePeriod: 1,
+	})
 	if err != nil {
 		return err
 	}
@@ -51,33 +57,39 @@ func (s *Listener) Listen() error {
 		}
 
 		go func() {
-			err := s.handleConn(conn)
+			id, stopC, err := s.handleConn(conn)
 			if err != nil {
 				log.Println("Failed to handle conn: ", err)
 			}
+
+			if err := <-stopC; err != nil {
+				log.Println("Relay closed with err: ", err)
+			}
+
+			s.closeHandler(id)
 		}()
 	}
 }
 
-func (s *Listener) handleConn(conn quic.Connection) error {
+func (s *Listener) handleConn(conn quic.Connection) (uint64, <-chan error, error) {
 	for {
 		helloStream, err := conn.AcceptStream(context.Background())
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 
 		id, stopC, err := s.registerHandler(conn)
 		if err != nil {
-			return err
+			return 0, nil, err
 		}
 
 		// Receive first stream from dialer.
 		if err := s.handleHelloStream(id, helloStream); err != nil && err != io.EOF {
-			return err
+			return 0, nil, err
 		}
 
 		// Wait until handler finishes.
-		return <-stopC
+		return id, stopC, nil
 	}
 }
 
@@ -98,8 +110,16 @@ func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
 		return nil
 	}
 
-	transport := transport.NewTransport(stream, handleHello)
-	defer transport.Abandon()
+	t, err := SyncTransport(
+		stream,
+		handleHello,
+		nil,
+	)
 
-	return transport.Spawn()
+	if err != nil {
+		return err
+	}
+
+	t.Close()
+	return nil
 }
