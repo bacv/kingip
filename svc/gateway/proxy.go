@@ -46,7 +46,7 @@ func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := s.authHandler(username, password)
+	user, err := s.authHandler(username, password)
 	if err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
 		ctx.Response.ConnectionClose()
@@ -54,23 +54,23 @@ func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
 	}
 
 	if string(ctx.Method()) == "CONNECT" {
-		s.handleConnect(ctx)
+		s.handleConnect(ctx, user)
 	} else {
-		s.handleHTTP(ctx)
+		s.handleHTTP(ctx, user)
 	}
 }
 
-func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx) {
+func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx, user *svc.User) {
 	ctx.Response.SetStatusCode(fasthttp.StatusOK)
 	ctx.Response.SetBody(nil)
 	host := string(ctx.Host())
 
 	ctx.Hijack(func(userConn net.Conn) {
-		s.sessionHandler(svc.Destination(host), s.config.Region, userConn)
+		s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn)
 	})
 }
 
-func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx) {
+func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx, user *svc.User) {
 	host := string(ctx.Request.URI().Host())
 	if !regexp.MustCompile(`:\d+$`).MatchString(host) {
 		host += ":80"
@@ -82,7 +82,7 @@ func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx) {
 	bufWriter := bufio.NewWriter(pipeConn)
 	defer bufWriter.Flush()
 
-	go s.sessionHandler(svc.Destination(host), s.config.Region, txConn)
+	go s.sessionHandler(user, svc.Destination(host), s.config.Region, txConn)
 
 	if err := streamRequest(ctx, bufWriter); err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)

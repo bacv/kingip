@@ -21,10 +21,11 @@ func main() {
 	testUser := svc.NewUser("user", 1, svc.DefaultUserConfig())
 	testUserAuth := svc.UserAuth{Name: testUser.Name(), Password: "pass"}
 
-	userStore := store.NewMockUserStore()
-	userStore.Users[testUserAuth] = testUser
+	mockStore := store.NewMockUserStore()
+	mockStore.Users[testUserAuth] = testUser
+	mockSessionStore := store.NewMockSessionStore()
 
-	handler := gateway.NewGateway(userStore)
+	handler := gateway.NewGateway(mockStore, mockStore, mockSessionStore)
 
 	listenRelayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
 	if err != nil {

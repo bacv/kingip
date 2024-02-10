@@ -1,14 +1,20 @@
 package svc
 
+import "time"
+
 type UserID uint64
 
 type UserConfig struct {
-	maxSessions uint16
+	maxSessions        uint16
+	maxSessionDuration time.Duration
+	maxGBs             float64
 }
 
 func DefaultUserConfig() UserConfig {
 	return UserConfig{
-		maxSessions: 10,
+		maxSessions:        10,
+		maxGBs:             1,
+		maxSessionDuration: time.Millisecond * 500,
 	}
 }
 
@@ -36,6 +42,14 @@ func (u *User) ID() UserID {
 
 func (u *User) MaxSessions() uint16 {
 	return u.config.maxSessions
+}
+
+func (u *User) MaxGBs() float64 {
+	return float64(u.config.maxGBs)
+}
+
+func (u *User) MaxSessionDuration() time.Duration {
+	return u.config.maxSessionDuration
 }
 
 type UserAuth struct {

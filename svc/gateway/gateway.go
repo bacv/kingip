@@ -47,15 +47,21 @@ func (r *relayConn) stop() {
 }
 
 type Gateway struct {
-	store      svc.UserStore
+	bandwidthStore svc.BandwidthStore
+	userStore      svc.UserStore
+	sessionStore   svc.SessionStore
+
 	relayConns map[svc.RelayID]*relayConn
 	regions    *svc.RegionCache
 	mu         sync.RWMutex
 }
 
-func NewGateway(store svc.UserStore) *Gateway {
+func NewGateway(userStore svc.UserStore, bandwidthStore svc.BandwidthStore, sessionStore svc.SessionStore) *Gateway {
 	return &Gateway{
-		store:      store,
+		userStore:      userStore,
+		bandwidthStore: bandwidthStore,
+		sessionStore:   sessionStore,
+
 		relayConns: make(map[svc.RelayID]*relayConn),
 		regions:    svc.NewRegionsCache(),
 	}
@@ -77,20 +83,16 @@ func (g *Gateway) CloseHandle(id uint64) {
 	}
 }
 
-func (g *Gateway) AuthHandle(name, password string) error {
-	user, err := g.store.GetUser(svc.UserAuth{Name: name, Password: password})
+func (g *Gateway) AuthHandle(name, password string) (*svc.User, error) {
+	user, err := g.userStore.GetUser(svc.UserAuth{Name: name, Password: password})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if g.store.GetUserSessionCount(user.ID()) >= user.MaxSessions() {
-		return errors.New("User session limit")
-	}
-
-	return nil
+	return user, nil
 }
 
-func (g *Gateway) SessionHandle(destination svc.Destination, region svc.Region, userConn svc.Conn) error {
+func (g *Gateway) SessionHandle(user *svc.User, destination svc.Destination, region svc.Region, userConn svc.Conn) error {
 	relayId, ok := g.regions.Get(region)
 	if !ok {
 		return errors.New("No relay in region")
@@ -110,26 +112,60 @@ func (g *Gateway) SessionHandle(destination svc.Destination, region svc.Region, 
 		return err
 	}
 
+	sessions := g.sessionStore.SessionAdd(user.ID())
+	defer g.sessionStore.SessionRemove(user.ID())
+
+	if sessions > user.MaxSessions() {
+		return errors.New("Max sessions")
+	}
+
+	mbs := g.bandwidthStore.GetUserTotalUsedMBs(user.ID())
+	if mbs/1024. > user.MaxGBs() {
+		return errors.New("Max bandwidth used")
+	}
+
 	inboundC := make(chan transferResult)
 	go func() {
 		inbound, err := transferData(userConn, relayStream)
 		inboundC <- transferResult{bytesCopied: inbound, err: err}
 	}()
 
-	outbound, err := transferData(relayStream, userConn)
-	if err != nil {
-		return err
+	outboundC := make(chan transferResult)
+	go func() {
+		outbound, err := transferData(relayStream, userConn)
+		outboundC <- transferResult{bytesCopied: outbound, err: err}
+	}()
+
+	select {
+	case inboundRes := <-inboundC:
+		inbound, err := inboundRes.bytesCopied, inboundRes.err
+		if err != nil {
+			return err
+		}
+		outboundRes := <-outboundC
+		outbound, err := outboundRes.bytesCopied, outboundRes.err
+
+		log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
+		totalBytes := inbound + outbound
+		megabytes := float64(totalBytes) / (1024.0 * 1024.0)
+		g.bandwidthStore.UpdateUserTotalUsedMBs(user.ID(), megabytes)
+
+		return nil
+	case outboundRes := <-outboundC:
+		outbound, err := outboundRes.bytesCopied, outboundRes.err
+		if err != nil {
+			return err
+		}
+		inboundRes := <-inboundC
+		inbound, err := inboundRes.bytesCopied, inboundRes.err
+
+		log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
+		totalBytes := inbound + outbound
+		megabytes := float64(totalBytes) / (1024.0 * 1024.0)
+		g.bandwidthStore.UpdateUserTotalUsedMBs(user.ID(), megabytes)
+
+		return nil
 	}
-
-	inboundRes := <-inboundC
-	inbound, err := inboundRes.bytesCopied, inboundRes.err
-	if err != nil {
-		return err
-	}
-
-	log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
-
-	return nil
 }
 
 func (g *Gateway) handleProxyInit(w transport.ResponseWriter, r proto.Message) error {

@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	parallelCalls  = 100
-	targetURL      = "http://bacv.org"
+	parallelCalls  = 12
+	targetURL      = "https://bacv.org"
 	proxyURL       = "http://user:pass@localhost:10700"
 	requestTimeout = 10
 )
