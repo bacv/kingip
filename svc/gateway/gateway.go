@@ -3,6 +3,7 @@ package gateway
 import (
 	"errors"
 	"io"
+	"log"
 	"math/rand"
 	"sync"
 
@@ -109,8 +110,24 @@ func (g *Gateway) SessionHandle(destination svc.Destination, region svc.Region, 
 		return err
 	}
 
-	go transferData(userConn, relayStream)
-	transferData(relayStream, userConn)
+	inboundC := make(chan transferResult)
+	go func() {
+		inbound, err := transferData(userConn, relayStream)
+		inboundC <- transferResult{bytesCopied: inbound, err: err}
+	}()
+
+	outbound, err := transferData(relayStream, userConn)
+	if err != nil {
+		return err
+	}
+
+	inboundRes := <-inboundC
+	inbound, err := inboundRes.bytesCopied, inboundRes.err
+	if err != nil {
+		return err
+	}
+
+	log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
 
 	return nil
 }
@@ -191,8 +208,19 @@ func (g *Gateway) registerRegions(relayId svc.RelayID, regions map[string]string
 	return nil
 }
 
-func transferData(dst svc.Conn, src svc.Conn) {
+type transferResult struct {
+	bytesCopied int64
+	err         error
+}
+
+func transferData(dst svc.Conn, src svc.Conn) (int64, error) {
 	defer dst.Close()
 	defer src.Close()
-	io.Copy(dst, src)
+
+	bytesCopied, err := io.Copy(dst, src)
+	if err != nil {
+		return bytesCopied, err
+	}
+
+	return bytesCopied, nil
 }

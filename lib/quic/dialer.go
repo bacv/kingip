@@ -40,7 +40,9 @@ func (s *Dialer) Dial(ctx context.Context) error {
 	conn, err := quic.DialAddrEarly(
 		ctx, s.config.Addr.String(),
 		TlsClientConfig.Clone(),
-		&quic.Config{},
+		&quic.Config{
+			MaxIncomingStreams: 100_000,
+		},
 	)
 	if err != nil {
 		return err
@@ -99,7 +101,7 @@ func (s *Dialer) listenStreams(ctx context.Context, conn quic.Connection) error 
 }
 
 func (s *Dialer) pong(pingStream quic.Stream, cancel context.CancelFunc) error {
-	pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
+	pingStream.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	if _, err := SyncTransport(pingStream, pingHandler, nil); err != nil {
 		return err
@@ -108,7 +110,7 @@ func (s *Dialer) pong(pingStream quic.Stream, cancel context.CancelFunc) error {
 	go func() {
 		defer cancel()
 		for {
-			pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
+			pingStream.SetReadDeadline(time.Now().Add(5 * time.Second))
 			if _, err := SyncTransport(pingStream, pingHandler, nil); err != nil {
 				return
 			}

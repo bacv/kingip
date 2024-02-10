@@ -16,9 +16,24 @@ import (
 )
 
 type edgeConn struct {
-	conn  quic.Connection
-	stopC chan error
-	mu    sync.Mutex
+	conn    quic.Connection
+	stopC   chan error
+	regions []svc.Region
+	mu      sync.Mutex
+}
+
+func (r *edgeConn) updateRegions(regions []svc.Region) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.regions = regions
+}
+
+func (r *edgeConn) getRegions() []svc.Region {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.regions
 }
 
 func (e *edgeConn) openStream() (quic.Stream, error) {
@@ -51,10 +66,14 @@ func (g *Relay) RegionsHandle(id uint64, regions map[string]string) error {
 }
 
 func (g *Relay) CloseHandle(id uint64) {
+	regions := g.closeEdge(svc.EdgeID(id))
+	for _, region := range regions {
+		g.regions.Remove(region, id)
+	}
 }
 
 func (r *Relay) GatewayHandle(gatewayStream quic.Stream) error {
-	// Receive proxy destination and region
+	// Receive proxy destination and region.
 	destination, region, err := getProxyDetails(gatewayStream)
 	if err != nil {
 		log.Println("Unable to create proxy", err)
@@ -126,9 +145,29 @@ func (g *Relay) registerEdge(conn quic.Connection) (svc.EdgeID, chan error) {
 }
 
 func (g *Relay) registerRegions(relayId svc.EdgeID, regions map[string]string) error {
+	var edgeRegions []svc.Region
 	for region, _ := range regions {
 		g.regions.Add(svc.Region(region), uint64(relayId))
+		edgeRegions = append(edgeRegions, svc.Region(region))
 	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.edgeConns[relayId].updateRegions(edgeRegions)
+	return nil
+}
+
+func (g *Relay) closeEdge(id svc.EdgeID) []svc.Region {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if edgeConn, ok := g.edgeConns[id]; ok {
+		regions := edgeConn.getRegions()
+		delete(g.edgeConns, id)
+		return regions
+	}
+
 	return nil
 }
 

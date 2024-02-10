@@ -45,7 +45,9 @@ func NewListener(
 }
 
 func (s *Listener) Listen() error {
-	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{})
+	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{
+		MaxIncomingStreams: 100_000,
+	})
 	if err != nil {
 		return err
 	}
@@ -94,6 +96,8 @@ func (s *Listener) acceptConn(conn quic.Connection) {
 func (s *Listener) handleConn(conn quic.Connection) (uint64, <-chan error, error) {
 	for {
 		helloStream, err := conn.AcceptStream(context.Background())
+		defer helloStream.Close()
+
 		if err != nil {
 			return 0, nil, err
 		}
@@ -130,7 +134,7 @@ func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
 		return nil
 	}
 
-	t, err := SyncTransport(
+	_, err := SyncTransport(
 		stream,
 		handleHello,
 		nil,
@@ -140,7 +144,6 @@ func (s *Listener) handleHelloStream(id uint64, stream quic.Stream) error {
 		return err
 	}
 
-	t.Close()
 	return nil
 }
 
@@ -149,7 +152,7 @@ func (s *Listener) ping(id uint64, pingStream quic.Stream) (<-chan struct{}, err
 	pingStream.SetReadDeadline(time.Now().Add(time.Second))
 
 	// First ping needs to be sent right away to "claim" this stream.
-	if _, err := SyncTransport(pingStream, pingHandler, proto.NewMsgPing(string(id))); err != nil {
+	if _, err := SyncTransport(pingStream, pingHandler, proto.NewMsgPing(fmt.Sprint(id))); err != nil {
 		return nil, err
 	}
 
@@ -161,8 +164,8 @@ func (s *Listener) ping(id uint64, pingStream quic.Stream) (<-chan struct{}, err
 		for {
 			<-ticker.C
 
-			pingStream.SetReadDeadline(time.Now().Add(2 * time.Second))
-			if _, err := SyncTransport(pingStream, pongHandler, proto.NewMsgPing(string(id))); err != nil {
+			pingStream.SetReadDeadline(time.Now().Add(5 * time.Second))
+			if _, err := SyncTransport(pingStream, pongHandler, proto.NewMsgPing(fmt.Sprint(id))); err != nil {
 				return
 			}
 		}

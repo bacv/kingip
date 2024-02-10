@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 	"log"
-	"net"
+	"time"
 
 	"github.com/bacv/kingip/lib/proto"
 	"github.com/bacv/kingip/lib/transport"
@@ -14,10 +14,11 @@ import (
 )
 
 type Edge struct {
+	connPool *ConnPool
 }
 
 func NewEdge() *Edge {
-	return &Edge{}
+	return &Edge{connPool: NewConnPool(999)}
 }
 
 func (r *Edge) RelayHandle(relayStream quic.Stream) error {
@@ -31,11 +32,21 @@ func (r *Edge) RelayHandle(relayStream quic.Stream) error {
 		log.Println("Unable to create proxy", err)
 	}
 
-	// TODO: reuse TCP conn depending on the host.
-	destConn, err := net.Dial("tcp", string(destination))
+	//destConn, err := net.Dial("tcp", string(destination))
+	destConn, err := r.connPool.Get(string(destination))
 	if err != nil {
-		log.Printf("Error connecting to destination [%s]: %v", destination, err)
-		return err
+		if err != ErrorMaxHostConns {
+			log.Printf("Error connecting to destination [%s]: %v", destination, err)
+			return err
+		}
+
+		<-time.After(50 * time.Millisecond)
+		destConn, err = r.connPool.Get(string(destination))
+
+		if err != nil {
+			log.Printf("Error connecting to destination [%s]: %v", destination, err)
+			return err
+		}
 	}
 
 	log.Printf("Created connection to [%s]", destination)
