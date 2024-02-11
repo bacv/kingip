@@ -12,8 +12,8 @@ import (
 )
 
 type ProxyConfig struct {
-	Addr   net.Addr
-	Region svc.Region
+	Addr   string     `mapstructure:"addr"`
+	Region svc.Region `mapstructure:"region"`
 }
 
 type Proxy struct {
@@ -35,7 +35,7 @@ func NewProxyServer(
 }
 
 func (s *Proxy) ListenUser() error {
-	return fasthttp.ListenAndServe(s.config.Addr.String(), s.handleRequest)
+	return fasthttp.ListenAndServe(s.config.Addr, s.handleRequest)
 }
 
 func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {

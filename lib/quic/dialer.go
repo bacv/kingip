@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net"
 	"time"
 
 	proto "github.com/bacv/kingip/lib/proto"
@@ -15,7 +14,7 @@ import (
 type DialerStreamHandleFunc func(quic.Stream) error
 
 type DialerConfig struct {
-	Addr    net.Addr
+	Addr    string
 	Regions map[string]string
 }
 
@@ -38,7 +37,7 @@ func (s *Dialer) Dial(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	conn, err := quic.DialAddrEarly(
-		ctx, s.config.Addr.String(),
+		ctx, s.config.Addr,
 		TlsClientConfig.Clone(),
 		&quic.Config{
 			MaxIncomingStreams: 100_000,

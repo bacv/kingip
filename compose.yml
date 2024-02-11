@@ -1,0 +1,25 @@
+version: '3.7'
+services:
+
+  gateway:
+    container_name: gateway
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "10700:10700/tcp"
+    entrypoint: /gateway -listenRelayAddr 0.0.0.0:4444 -listenProxyAddr 0.0.0.0:11700
+
+  relay:
+    container_name: relay
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: /relay -gatewayAddr gateway:4444 -listenAddr 0.0.0.0:5555
+
+  edge:
+    container_name: edge
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: /edge -relayAddr relay:5555

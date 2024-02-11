@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"log"
-	"net"
 	"os"
 	"sync"
 
@@ -38,13 +37,8 @@ func main() {
 		relayAddr = relayAddrFlag
 	}
 
-	udpAddr, err := net.ResolveUDPAddr("udp", relayAddr)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	dialerConfig := quic.DialerConfig{
-		Addr: udpAddr,
+		Addr: relayAddr,
 		Regions: map[string]string{
 			"red": "http://red.com",
 		},
@@ -54,7 +48,7 @@ func main() {
 		dialerConfig.Regions = viper.GetStringMapString("regions")
 	}
 
-    spawn(dialerConfig)
+	spawn(dialerConfig)
 }
 
 func spawn(dialerConfig quic.DialerConfig) {

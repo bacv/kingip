@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"time"
 
 	proto "github.com/bacv/kingip/lib/proto"
@@ -19,7 +18,7 @@ type ListenerRegionsHandleFunc func(uint64, map[string]string) error
 type ListenerCloseHandleFunc func(uint64)
 
 type ListenerConfig struct {
-	Addr net.Addr
+	Addr string
 }
 
 type Listener struct {
@@ -45,7 +44,7 @@ func NewListener(
 }
 
 func (s *Listener) Listen() error {
-	listener, err := quic.ListenAddr(s.config.Addr.String(), GenerateTLSConfig(), &quic.Config{
+	listener, err := quic.ListenAddr(s.config.Addr, GenerateTLSConfig(), &quic.Config{
 		MaxIncomingStreams: 100_000,
 	})
 	if err != nil {

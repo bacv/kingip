@@ -3,69 +3,95 @@ package main
 import (
 	"context"
 	"log"
-	"net"
 	"os"
 	"sync"
 
 	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc/relay"
-	"github.com/namsral/flag"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
 
-	dialGateway := flag.String("dialGateway", "127.0.0.1:4444", "Address to dial gateway")
-	listenRelay := flag.String("listenRelay", "127.0.0.1:5555", "Address for relay listener")
-	configFile := flag.String("config", "", "Path to config file")
+	var (
+		hostname       string
+		listenAddr     string
+		gateways       []string
+		regions        []string
+		configFile     string
+		dialerConfigs  []quic.DialerConfig
+		listenerConfig quic.ListenerConfig
+	)
 
-	flag.Parse()
+	pflag.StringVar(&hostname, "hostname", "relay", "Hostname of the relay")
+	pflag.StringVar(&listenAddr, "listenAddr", "127.0.0.1:5555", "Address for edge conns")
+	pflag.StringArray("gateways", gateways, "Addresses of gateways")
+	pflag.StringArray("regions", regions, "Relay regions")
+	pflag.StringVar(&configFile, "config", "", "Path to config file")
+	pflag.Parse()
 
-	if *configFile != "" {
-		viper.SetConfigFile(*configFile)
+	viper.BindPFlag("hostname", pflag.Lookup("hostname"))
+	viper.BindPFlag("listenAddr", pflag.Lookup("listenAddr"))
+	viper.BindPFlag("gateways", pflag.Lookup("gateways"))
+	viper.BindPFlag("regions", pflag.Lookup("regions"))
+	viper.SetConfigFile(configFile)
+
+	if configFile != "" {
 		if err := viper.ReadInConfig(); err != nil {
-			log.Fatalf("Error reading config file, %s", err)
+			log.Fatalf("Error reading config file: %s", err)
 		}
-		dialGatewayAddr := viper.GetString("dialGatewayAddr")
-		if dialGatewayAddr != "" {
-			*dialGateway = dialGatewayAddr
+		if err := viper.UnmarshalKey("regions", &regions); err != nil {
+			log.Fatalf("Error unmarshaling regions configuration: %s", err)
 		}
-		listenRelayAddr := viper.GetString("listenRelayAddr")
-		if listenRelayAddr != "" {
-			*listenRelay = listenRelayAddr
+		if err := viper.UnmarshalKey("gateways", &gateways); err != nil {
+			log.Fatalf("Error unmarshaling gateways configuration: %s", err)
 		}
+	} else {
+		gateways = viper.GetStringSlice("gateways")
+		regions = viper.GetStringSlice("regions")
 	}
 
-	dialGatewayAddr, err := net.ResolveUDPAddr("udp", *dialGateway)
-	if err != nil {
-		log.Fatal(err)
+	dialerRegions := make(map[string]string)
+	for _, region := range regions {
+		dialerRegions[region] = hostname
+	}
+	for _, addr := range gateways {
+		dialerConfig := quic.DialerConfig{
+			Addr:    addr,
+			Regions: dialerRegions,
+		}
+		dialerConfigs = append(dialerConfigs, dialerConfig)
 	}
 
-	listenRelayAddr, err := net.ResolveUDPAddr("udp", *listenRelay)
-	if err != nil {
-		log.Fatal(err)
+	listenerConfig = quic.ListenerConfig{
+		Addr: listenAddr,
 	}
 
-	dialerConfig := quic.DialerConfig{
-		Addr: dialGatewayAddr,
-		Regions: map[string]string{
-			"blue": viper.GetString("regions.blue"),
-			"red":  viper.GetString("regions.red"),
-		},
-	}
+	handler := relay.NewRelay()
 
-	listenerConfig := quic.ListenerConfig{
-		Addr: listenRelayAddr,
-	}
-
-	spawn(dialerConfig, listenerConfig)
+	var wg sync.WaitGroup
+	spawnListener(&wg, listenerConfig, handler)
+	spawnDialers(&wg, dialerConfigs, handler)
+	wg.Wait()
 }
 
-func spawn(dialerConfig quic.DialerConfig, listenerConfig quic.ListenerConfig) {
-	handler := relay.NewRelay()
-	dialer := quic.NewDialer(dialerConfig, handler.GatewayHandle)
+func spawnDialers(wg *sync.WaitGroup, dialerConfigs []quic.DialerConfig, handler *relay.Relay) {
+	for _, cfg := range dialerConfigs {
+		wg.Add(1)
+		go func(cfg quic.DialerConfig) {
+			defer wg.Done()
 
+			dialer := quic.NewDialer(cfg, handler.GatewayHandle)
+			err := dialer.Dial(context.Background())
+			if err != nil {
+				log.Fatal(err)
+			}
+		}(cfg)
+	}
+}
+func spawnListener(wg *sync.WaitGroup, listenerConfig quic.ListenerConfig, handler *relay.Relay) {
 	listener := quic.NewListener(
 		context.Background(),
 		listenerConfig,
@@ -74,17 +100,7 @@ func spawn(dialerConfig quic.DialerConfig, listenerConfig quic.ListenerConfig) {
 		handler.CloseHandle,
 	)
 
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		err := dialer.Dial(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
+	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		err := listener.Listen()
@@ -92,6 +108,4 @@ func spawn(dialerConfig quic.DialerConfig, listenerConfig quic.ListenerConfig) {
 			log.Fatal(err)
 		}
 	}()
-
-	wg.Wait()
 }

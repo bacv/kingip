@@ -1,0 +1,10 @@
+listenAddr: "0.0.0.0:5555"
+
+regions:
+  - "red"
+  - "green"
+  - "blue"
+
+gateways:
+  - "localhost:4444"
+

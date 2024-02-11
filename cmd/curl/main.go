@@ -14,8 +14,8 @@ import (
 
 const (
 	parallelCalls  = 12
-	targetURL      = "https://bacv.org"
-	proxyURL       = "http://user:pass@localhost:10700"
+	targetURL      = "http://bacv.org"
+	proxyURL       = "http://user:pass@localhost:11700"
 	requestTimeout = 10
 )
 
@@ -66,7 +66,7 @@ func main() {
 				atomic.AddInt32(&errorCount, 1)
 			}
 
-			fmt.Printf("Completed request %d\n", i)
+			fmt.Printf("Completed request %d; Status %d\n", i, resp.StatusCode)
 		}(i)
 	}
 
