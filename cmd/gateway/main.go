@@ -12,12 +12,48 @@ import (
 	"github.com/bacv/kingip/svc/gateway"
 	"github.com/bacv/kingip/svc/store"
 	"github.com/namsral/flag"
+	"github.com/spf13/viper"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
+
+	listenRelayAddrString := flag.String("listenRelay", "127.0.0.1:4444", "Address for relay listener")
+	listenProxyAddrString := flag.String("listenProxy", "127.0.0.1:10700", "Address for user cons")
+	region := flag.String("region", "red", "Gateway region")
+	configFile := flag.String("config", "", "Path to config file")
+
 	flag.Parse()
 
+	if *configFile != "" {
+		*listenRelayAddrString = viper.GetString("listenRelayAddr")
+		*listenProxyAddrString = viper.GetString("listenProxyAddr")
+		*region = viper.GetString("region")
+	}
+
+	listenRelayAddr, err := net.ResolveUDPAddr("udp", *listenRelayAddrString)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	listenUserRedAddr, err := net.ResolveTCPAddr("tcp", *listenProxyAddrString)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	listenerConfig := quic.ListenerConfig{
+		Addr: listenRelayAddr,
+	}
+
+	proxyConfig := gateway.ProxyConfig{
+		Region: svc.Region(*region),
+		Addr:   listenUserRedAddr,
+	}
+
+	spawn(proxyConfig, listenerConfig)
+}
+
+func spawn(proxyConfig gateway.ProxyConfig, listenerConfig quic.ListenerConfig) {
 	testUser := svc.NewUser("user", 1, svc.DefaultUserConfig())
 	testUserAuth := svc.UserAuth{Name: testUser.Name(), Password: "pass"}
 
@@ -26,40 +62,6 @@ func main() {
 	mockSessionStore := store.NewMockSessionStore()
 
 	handler := gateway.NewGateway(mockStore, mockStore, mockSessionStore)
-
-	listenRelayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:4444")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	listenUserRedAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:10700")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// listenUserGreenAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:10070")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// listenUserBlueAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:10007")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	// listenUserYellowAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:10770")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-
-	listenerConfig := quic.ListenerConfig{
-		Addr: listenRelayAddr,
-	}
-
-	proxyConfig := gateway.ProxyConfig{
-		Region: "red",
-		Addr:   listenUserRedAddr,
-	}
 
 	listener := quic.NewListener(
 		context.Background(),

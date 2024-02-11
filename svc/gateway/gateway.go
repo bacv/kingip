@@ -138,34 +138,28 @@ func (g *Gateway) SessionHandle(user *svc.User, destination svc.Destination, reg
 
 	select {
 	case inboundRes := <-inboundC:
-		inbound, err := inboundRes.bytesCopied, inboundRes.err
-		if err != nil {
-			return err
-		}
-		outboundRes := <-outboundC
-		outbound, err := outboundRes.bytesCopied, outboundRes.err
-
-		log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
-		totalBytes := inbound + outbound
-		megabytes := float64(totalBytes) / (1024.0 * 1024.0)
-		g.bandwidthStore.UpdateUserTotalUsedMBs(user.ID(), megabytes)
-
+		g.receiveIoRes(user, inboundRes, outboundC)
 		return nil
 	case outboundRes := <-outboundC:
-		outbound, err := outboundRes.bytesCopied, outboundRes.err
-		if err != nil {
-			return err
-		}
-		inboundRes := <-inboundC
-		inbound, err := inboundRes.bytesCopied, inboundRes.err
-
-		log.Printf(">>> inbound: %d; outbound: %d >>>", inbound, outbound)
-		totalBytes := inbound + outbound
-		megabytes := float64(totalBytes) / (1024.0 * 1024.0)
-		g.bandwidthStore.UpdateUserTotalUsedMBs(user.ID(), megabytes)
-
+		g.receiveIoRes(user, outboundRes, inboundC)
 		return nil
 	}
+}
+
+func (g *Gateway) receiveIoRes(user *svc.User, res transferResult, otherC <-chan transferResult) (float64, error) {
+	origin, err := res.bytesCopied, res.err
+	if err != nil {
+		return 0, err
+	}
+	otherRes := <-otherC
+	other, err := otherRes.bytesCopied, otherRes.err
+
+	log.Printf(">>> inbound: %d; outbound: %d >>>", origin, other)
+	totalBytes := origin + other
+	megabytes := float64(totalBytes) / (1024.0 * 1024.0)
+
+	g.bandwidthStore.UpdateUserTotalUsedMBs(user.ID(), megabytes)
+	return 0, err
 }
 
 func (g *Gateway) handleProxyInit(w transport.ResponseWriter, r proto.Message) error {

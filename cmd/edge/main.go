@@ -10,27 +10,56 @@ import (
 
 	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc/edge"
+	"github.com/spf13/viper"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
+
+	var (
+		relayAddrFlag string
+		configFile    string
+	)
+
+	flag.StringVar(&relayAddrFlag, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
+	flag.StringVar(&configFile, "config", "", "Path to configuration file")
 	flag.Parse()
 
-	relayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:5555")
+	if configFile != "" {
+		viper.SetConfigFile(configFile)
+		err := viper.ReadInConfig()
+		if err != nil {
+			log.Fatalf("Error reading config file: %v", err)
+		}
+	}
+
+	relayAddr := viper.GetString("relayAddr")
+	if relayAddr == "" {
+		relayAddr = relayAddrFlag
+	}
+
+	udpAddr, err := net.ResolveUDPAddr("udp", relayAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	handler := edge.NewEdge()
-
-	config := quic.DialerConfig{
-		Addr: relayAddr,
+	dialerConfig := quic.DialerConfig{
+		Addr: udpAddr,
 		Regions: map[string]string{
 			"red": "http://red.com",
 		},
 	}
 
-	dialer := quic.NewDialer(config, handler.RelayHandle)
+	if viper.IsSet("regions") {
+		dialerConfig.Regions = viper.GetStringMapString("regions")
+	}
+
+    spawn(dialerConfig)
+}
+
+func spawn(dialerConfig quic.DialerConfig) {
+	handler := edge.NewEdge()
+	dialer := quic.NewDialer(dialerConfig, handler.RelayHandle)
 
 	var wg sync.WaitGroup
 
