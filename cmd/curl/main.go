@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"log"
@@ -33,7 +34,10 @@ func main() {
 		log.Fatalf("Failed to parse proxy URL: %v", err)
 	}
 
-	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	transport := &http.Transport{
+		Proxy:           http.ProxyURL(proxy),
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	client := &http.Client{Transport: transport}
 
 	var wg sync.WaitGroup

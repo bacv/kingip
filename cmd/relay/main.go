@@ -48,10 +48,11 @@ func main() {
 		if err := viper.UnmarshalKey("gateways", &gateways); err != nil {
 			log.Fatalf("Error unmarshaling gateways configuration: %s", err)
 		}
-	} else {
-		gateways = viper.GetStringSlice("gateways")
 		regions = viper.GetStringSlice("regions")
 	}
+
+	regions = viper.GetStringSlice("regions")
+	gateways = viper.GetStringSlice("gateways")
 
 	dialerRegions := make(map[string]string)
 	for _, region := range regions {

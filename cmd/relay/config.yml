@@ -7,4 +7,3 @@ regions:
 
 gateways:
   - "localhost:4444"
-

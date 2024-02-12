@@ -42,21 +42,20 @@ func main() {
 		if err := viper.ReadInConfig(); err != nil {
 			log.Fatalf("Error reading config file: %s", err)
 		}
-		listenerConfig = quic.ListenerConfig{
-			Addr: listenRelayAddr,
-		}
 		if err := viper.UnmarshalKey("proxies", &proxyConfigs); err != nil {
 			log.Fatalf("Error unmarshaling proxies configuration: %s", err)
 		}
 	} else {
-		listenerConfig = quic.ListenerConfig{
-			Addr: listenRelayAddr,
-		}
 		proxyConfig := gateway.ProxyConfig{
 			Region: svc.Region(region),
 			Addr:   listenProxyAddr,
 		}
 		proxyConfigs = append(proxyConfigs, proxyConfig)
+	}
+
+	listenRelayAddr = viper.GetString("listenRelayAddr")
+	listenerConfig = quic.ListenerConfig{
+		Addr: listenRelayAddr,
 	}
 
 	testUser := svc.NewUser("user", 1, svc.DefaultUserConfig())
