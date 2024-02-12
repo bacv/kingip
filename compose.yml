@@ -1,0 +1,74 @@
+version: '3.7'
+services:
+
+  gateway:
+    container_name: gateway
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./cmd/gateway/config.yml:/gateway.yml
+    ports:
+      - "11700:11700/tcp"
+      - "11070:11070/tcp"
+      - "11007:11007/tcp"
+      - "11770:11770/tcp"
+    entrypoint: /gateway --config /gateway.yml
+
+  relay-red-green:
+    container_name: relay-red-green
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - gateway
+    entrypoint: /relay --gateways gateway:4444 --listenAddr 0.0.0.0:5555 --regions red --regions green
+
+  relay-blue-yellow:
+    container_name: relay-blue-yellow
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - gateway
+    entrypoint: /relay --gateways gateway:4444 --listenAddr 0.0.0.0:5555 --regions blue --regions yellow
+
+  edge-red:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 3
+    depends_on:
+      - relay-red-green
+    entrypoint: /edge --relayAddr relay-red-green:5555 --region red
+
+  edge-green:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 3
+    depends_on:
+      - relay-red-green
+    entrypoint: /edge --relayAddr relay-red-green:5555 --region green
+
+  edge-blue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 3
+    depends_on:
+      - relay-blue-yellow
+    entrypoint: /edge --relayAddr relay-blue-yellow:5555 --region blue
+
+  edge-yellow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      replicas: 3
+    depends_on:
+      - relay-blue-yellow
+    entrypoint: /edge --relayAddr relay-blue-yellow:5555 --region yellow

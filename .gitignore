@@ -1,3 +1,4 @@
 cmd/gateway/gateway
 cmd/relay/relay
 cmd/edge/edge
+cmd/curl/curl

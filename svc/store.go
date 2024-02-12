@@ -6,6 +6,11 @@ type UserStore interface {
 }
 
 type SessionStore interface {
-	Add(SessionID) error
-	Remove(SessionID)
+	SessionAdd(UserID) uint16
+	SessionRemove(UserID)
+}
+
+type BandwidthStore interface {
+	UpdateUserTotalUsedMBs(UserID, float64)
+	GetUserTotalUsedMBs(UserID) float64
 }

@@ -1,0 +1,11 @@
+listenRelayAddr: "0.0.0.0:4444"
+
+proxies:
+  - region: "red"
+    addr: "0.0.0.0:11700"
+  - region: "green"
+    addr: "0.0.0.0:11070"
+  - region: "blue"
+    addr: "0.0.0.0:11007"
+  - region: "yellow"
+    addr: "0.0.0.0:11770"

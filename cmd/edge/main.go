@@ -2,35 +2,47 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
-	"net"
 	"os"
 	"sync"
 
 	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc/edge"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
-	flag.Parse()
 
-	relayAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:5555")
-	if err != nil {
-		log.Fatal(err)
-	}
+	var (
+		hostname  string
+		relayAddr string
+		region    string
+	)
 
-	handler := edge.NewEdge()
+	pflag.StringVar(&hostname, "hostname", "edge", "Hostname of the edge")
+	pflag.StringVar(&relayAddr, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
+	pflag.StringVar(&region, "region", "red", "Region of the edge")
+	pflag.Parse()
 
-	config := quic.DialerConfig{
+	dialerConfig := quic.DialerConfig{
 		Addr: relayAddr,
 		Regions: map[string]string{
-			"red": "http://red.com",
+			region: hostname,
 		},
 	}
 
-	dialer := quic.NewDialer(config, handler.RelayHandle)
+	if viper.IsSet("regions") {
+		dialerConfig.Regions = viper.GetStringMapString("regions")
+	}
+
+	spawn(dialerConfig)
+}
+
+func spawn(dialerConfig quic.DialerConfig) {
+	handler := edge.NewEdge()
+	dialer := quic.NewDialer(dialerConfig, handler.RelayHandle)
 
 	var wg sync.WaitGroup
 

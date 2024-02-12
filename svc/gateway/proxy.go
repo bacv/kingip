@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"encoding/base64"
+	"log"
 	"net"
 	"regexp"
 	"strings"
@@ -12,8 +13,8 @@ import (
 )
 
 type ProxyConfig struct {
-	Addr   net.Addr
-	Region svc.Region
+	Addr   string     `mapstructure:"addr"`
+	Region svc.Region `mapstructure:"region"`
 }
 
 type Proxy struct {
@@ -35,7 +36,7 @@ func NewProxyServer(
 }
 
 func (s *Proxy) ListenUser() error {
-	return fasthttp.ListenAndServe(s.config.Addr.String(), s.handleRequest)
+	return fasthttp.ListenAndServe(s.config.Addr, s.handleRequest)
 }
 
 func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
@@ -46,7 +47,7 @@ func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	err := s.authHandler(username, password)
+	user, err := s.authHandler(username, password)
 	if err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusUnauthorized)
 		ctx.Response.ConnectionClose()
@@ -54,35 +55,42 @@ func (s *Proxy) handleRequest(ctx *fasthttp.RequestCtx) {
 	}
 
 	if string(ctx.Method()) == "CONNECT" {
-		s.handleConnect(ctx)
+		s.handleConnect(ctx, user)
 	} else {
-		s.handleHTTP(ctx)
+		s.handleHTTP(ctx, user)
 	}
 }
 
-func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx) {
+func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx, user *svc.User) {
 	ctx.Response.SetStatusCode(fasthttp.StatusOK)
 	ctx.Response.SetBody(nil)
 	host := string(ctx.Host())
 
 	ctx.Hijack(func(userConn net.Conn) {
-		s.sessionHandler(svc.Destination(host), s.config.Region, userConn)
+		if err := s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn); err != nil {
+			log.Print(err)
+		}
 	})
 }
 
-func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx) {
+func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx, user *svc.User) {
 	host := string(ctx.Request.URI().Host())
 	if !regexp.MustCompile(`:\d+$`).MatchString(host) {
 		host += ":80"
 	}
 
-	pipeConn, txConn := net.Pipe()
+	pipeConn, userConn := net.Pipe()
 	defer pipeConn.Close()
 
 	bufWriter := bufio.NewWriter(pipeConn)
 	defer bufWriter.Flush()
 
-	go s.sessionHandler(svc.Destination(host), s.config.Region, txConn)
+	go func() {
+		if err := s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn); err != nil {
+			userConn.Close()
+			log.Print(err)
+		}
+	}()
 
 	if err := streamRequest(ctx, bufWriter); err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
