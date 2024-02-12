@@ -16,31 +16,20 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	var (
-		relayAddrFlag string
-		configFile    string
+		hostname  string
+		relayAddr string
+		region    string
 	)
 
-	flag.StringVar(&relayAddrFlag, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
-	flag.StringVar(&configFile, "config", "", "Path to configuration file")
+	flag.StringVar(&hostname, "hostname", "edge", "Hostname of the edge")
+	flag.StringVar(&relayAddr, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
+	flag.StringVar(&region, "region", "red", "Region of the edge")
 	flag.Parse()
-
-	if configFile != "" {
-		viper.SetConfigFile(configFile)
-		err := viper.ReadInConfig()
-		if err != nil {
-			log.Fatalf("Error reading config file: %v", err)
-		}
-	}
-
-	relayAddr := viper.GetString("relayAddr")
-	if relayAddr == "" {
-		relayAddr = relayAddrFlag
-	}
 
 	dialerConfig := quic.DialerConfig{
 		Addr: relayAddr,
 		Regions: map[string]string{
-			"red": "http://red.com",
+			region: hostname,
 		},
 	}
 

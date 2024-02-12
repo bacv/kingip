@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/bacv/kingip/lib/proto"
 	quic_kingip "github.com/bacv/kingip/lib/quic"
@@ -93,6 +94,8 @@ func (g *Gateway) AuthHandle(name, password string) (*svc.User, error) {
 }
 
 func (g *Gateway) SessionHandle(user *svc.User, destination svc.Destination, region svc.Region, userConn svc.Conn) error {
+	log.Print("Connecting to: ", destination)
+
 	relayId, ok := g.regions.Get(region)
 	if !ok {
 		return errors.New("No relay in region")
@@ -143,6 +146,10 @@ func (g *Gateway) SessionHandle(user *svc.User, destination svc.Destination, reg
 	case outboundRes := <-outboundC:
 		g.receiveIoRes(user, outboundRes, inboundC)
 		return nil
+	case <-time.After(user.MaxSessionDuration()):
+		userConn.Close()
+		relayStream.Close()
+		return errors.New("Max session duration")
 	}
 }
 
@@ -154,7 +161,6 @@ func (g *Gateway) receiveIoRes(user *svc.User, res transferResult, otherC <-chan
 	otherRes := <-otherC
 	other, err := otherRes.bytesCopied, otherRes.err
 
-	log.Printf(">>> inbound: %d; outbound: %d >>>", origin, other)
 	totalBytes := origin + other
 	megabytes := float64(totalBytes) / (1024.0 * 1024.0)
 

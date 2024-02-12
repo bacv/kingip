@@ -7,7 +7,10 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "10700:10700/tcp"
+      - "11700:11700/tcp"
+      - "11070:11070/tcp"
+      - "11007:11007/tcp"
+      - "11770:11770/tcp"
     entrypoint: /gateway -listenRelayAddr 0.0.0.0:4444 -listenProxyAddr 0.0.0.0:11700
 
   relay:

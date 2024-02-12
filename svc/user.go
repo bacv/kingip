@@ -10,12 +10,16 @@ type UserConfig struct {
 	maxGBs             float64
 }
 
-func DefaultUserConfig() UserConfig {
+func NewUserConfig(sessions uint16, gbs float64, duration time.Duration) UserConfig {
 	return UserConfig{
-		maxSessions:        10,
-		maxGBs:             1,
-		maxSessionDuration: time.Millisecond * 500,
+		maxSessions:        sessions,
+		maxGBs:             gbs,
+		maxSessionDuration: duration,
 	}
+}
+
+func DefaultUserConfig() UserConfig {
+	return NewUserConfig(10, 1, time.Hour)
 }
 
 type User struct {

@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,14 +12,20 @@ import (
 	"time"
 )
 
-const (
-	parallelCalls  = 12
-	targetURL      = "http://bacv.org"
-	proxyURL       = "http://user:pass@localhost:11700"
-	requestTimeout = 10
+var (
+	parallelCalls  int
+	targetURL      string
+	proxyURL       string
+	requestTimeout time.Duration
 )
 
 func main() {
+	flag.IntVar(&parallelCalls, "parallel", 11, "Number of parallel calls")
+	flag.StringVar(&targetURL, "url", "http://httpbin.org/ip", "Target URL to request")
+	flag.StringVar(&proxyURL, "proxy", "http://user:pass@localhost:11700", "Proxy URL")
+	flag.DurationVar(&requestTimeout, "timeout", 10*time.Second, "Request timeout in seconds")
+	flag.Parse()
+
 	startTime := time.Now()
 
 	proxy, err := url.Parse(proxyURL)
@@ -27,13 +33,8 @@ func main() {
 		log.Fatalf("Failed to parse proxy URL: %v", err)
 	}
 
-	transport := &http.Transport{
-		Proxy: http.ProxyURL(proxy),
-	}
-
-	client := &http.Client{
-		Transport: transport,
-	}
+	transport := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	client := &http.Client{Transport: transport}
 
 	var wg sync.WaitGroup
 	var errorCount int32
@@ -43,12 +44,13 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 
-			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
 
 			req, err := http.NewRequestWithContext(ctx, "GET", targetURL, nil)
 			if err != nil {
 				log.Printf("Failed to create request: %v", err)
+				atomic.AddInt32(&errorCount, 1)
 				return
 			}
 
@@ -60,22 +62,17 @@ func main() {
 			}
 			defer resp.Body.Close()
 
-			_, err = io.Copy(io.Discard, resp.Body)
-			if err != nil {
-				log.Printf("Error reading response of request %d: %v", i, err)
+			if resp.StatusCode != 200 {
 				atomic.AddInt32(&errorCount, 1)
 			}
 
-			fmt.Printf("Completed request %d; Status %d\n", i, resp.StatusCode)
+			fmt.Printf("Completed request %d; Status: %d\n", i, resp.StatusCode)
 		}(i)
 	}
 
 	wg.Wait()
 	duration := time.Since(startTime)
 
-	totalRequests := float64(parallelCalls)
-	errorRate := float64(errorCount) / totalRequests
-
 	fmt.Printf("All curl calls completed in %v.\n", duration)
-	fmt.Printf("Error rate: %.2f%%\n", errorRate*100)
+	fmt.Printf("Error rate: %.2f%%\n", float64(errorCount)*100/float64(parallelCalls))
 }

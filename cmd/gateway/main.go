@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc"
@@ -61,8 +62,12 @@ func main() {
 	testUser := svc.NewUser("user", 1, svc.DefaultUserConfig())
 	testUserAuth := svc.UserAuth{Name: testUser.Name(), Password: "pass"}
 
+	unlimitedUser := svc.NewUser("unlimited", 2, svc.NewUserConfig(65000, 1_000_000_000, 24*time.Hour))
+	unlimitedUserAuth := svc.UserAuth{Name: unlimitedUser.Name(), Password: "pass"}
+
 	mockStore := store.NewMockUserStore()
 	mockStore.Users[testUserAuth] = testUser
+	mockStore.Users[unlimitedUserAuth] = unlimitedUser
 	mockSessionStore := store.NewMockSessionStore()
 
 	handler := gateway.NewGateway(mockStore, mockStore, mockSessionStore)

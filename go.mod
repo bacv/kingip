@@ -3,8 +3,8 @@ module github.com/bacv/kingip
 go 1.21
 
 require (
-	github.com/namsral/flag v1.7.4-pre
 	github.com/quic-go/quic-go v0.41.0
+	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.8.4
 	github.com/valyala/fasthttp v1.51.0
@@ -28,7 +28,6 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect

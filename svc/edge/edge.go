@@ -49,8 +49,6 @@ func (r *Edge) RelayHandle(relayStream quic.Stream) error {
 		}
 	}
 
-	log.Printf("Created connection to [%s]", destination)
-
 	go transferData(relayStream, destConn)
 	transferData(destConn, relayStream)
 

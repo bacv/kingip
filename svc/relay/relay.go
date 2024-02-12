@@ -113,7 +113,6 @@ func (r *Relay) handleEdgeStreamInit(w transport.ResponseWriter, rd proto.Messag
 		errors.New("Wrong protocol message")
 	}
 
-	log.Println("Created edge stream")
 	return nil
 }
 

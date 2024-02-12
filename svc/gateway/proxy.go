@@ -3,6 +3,7 @@ package gateway
 import (
 	"bufio"
 	"encoding/base64"
+	"log"
 	"net"
 	"regexp"
 	"strings"
@@ -66,7 +67,9 @@ func (s *Proxy) handleConnect(ctx *fasthttp.RequestCtx, user *svc.User) {
 	host := string(ctx.Host())
 
 	ctx.Hijack(func(userConn net.Conn) {
-		s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn)
+		if err := s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn); err != nil {
+			log.Print(err)
+		}
 	})
 }
 
@@ -76,13 +79,18 @@ func (s *Proxy) handleHTTP(ctx *fasthttp.RequestCtx, user *svc.User) {
 		host += ":80"
 	}
 
-	pipeConn, txConn := net.Pipe()
+	pipeConn, userConn := net.Pipe()
 	defer pipeConn.Close()
 
 	bufWriter := bufio.NewWriter(pipeConn)
 	defer bufWriter.Flush()
 
-	go s.sessionHandler(user, svc.Destination(host), s.config.Region, txConn)
+	go func() {
+		if err := s.sessionHandler(user, svc.Destination(host), s.config.Region, userConn); err != nil {
+			userConn.Close()
+			log.Print(err)
+		}
+	}()
 
 	if err := streamRequest(ctx, bufWriter); err != nil {
 		ctx.Response.SetStatusCode(fasthttp.StatusInternalServerError)
