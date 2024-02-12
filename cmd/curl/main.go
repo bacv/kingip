@@ -24,22 +24,29 @@ var (
 func main() {
 	pflag.IntVar(&parallelCalls, "parallel", 11, "Number of parallel calls")
 	pflag.StringVar(&targetURL, "url", "http://httpbin.org/ip", "Target URL to request")
-	pflag.StringVar(&proxyURL, "proxy", "http://user:pass@localhost:11700", "Proxy URL")
+	pflag.StringVar(&proxyURL, "proxy", "http://unlimited:pass@localhost", "Proxy URL")
 	pflag.DurationVar(&requestTimeout, "timeout", 10*time.Second, "Request timeout in seconds")
 	pflag.Parse()
 
 	startTime := time.Now()
 
-	proxy, err := url.Parse(proxyURL)
-	if err != nil {
-		log.Fatalf("Failed to parse proxy URL: %v", err)
+	ports := []int{11700, 11070, 11007, 11770}
+	//ports := []int{11700}
+	clients := []*http.Client{}
+	for _, port := range ports {
+		pu := fmt.Sprintf("%s:%d", proxyURL, port)
+		println(pu)
+		proxy, err := url.Parse(pu)
+		if err != nil {
+			log.Fatalf("Failed to parse proxy URL: %v", err)
+		}
+		transport := &http.Transport{
+			Proxy:           http.ProxyURL(proxy),
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := &http.Client{Transport: transport}
+		clients = append(clients, client)
 	}
-
-	transport := &http.Transport{
-		Proxy:           http.ProxyURL(proxy),
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: transport}
 
 	var wg sync.WaitGroup
 	var errorCount int32
@@ -49,6 +56,7 @@ func main() {
 		go func(i int) {
 			defer wg.Done()
 
+			client := clients[i%len(clients)]
 			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
 

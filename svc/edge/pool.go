@@ -4,14 +4,20 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 )
 
 var (
 	ErrorMaxHostConns = errors.New("Max limit per host reached")
 )
 
+type connDisposable struct {
+	conn     net.Conn
+	lastUsed time.Time
+}
+
 type ConnPool struct {
-	pool         map[string][]net.Conn
+	pool         map[string][]connDisposable
 	connRequests map[string]int
 	mu           sync.Mutex
 	cond         *sync.Cond
@@ -20,11 +26,12 @@ type ConnPool struct {
 
 func NewConnPool(maxPerHost int) *ConnPool {
 	cp := &ConnPool{
-		pool:         make(map[string][]net.Conn),
+		pool:         make(map[string][]connDisposable),
 		connRequests: make(map[string]int),
 		maxPerHost:   maxPerHost,
 	}
 	cp.cond = sync.NewCond(&cp.mu)
+	go cp.cleanupIdleConnections(5 * time.Second)
 	return cp
 }
 
@@ -34,9 +41,10 @@ func (p *ConnPool) Get(destination string) (net.Conn, error) {
 
 	for {
 		if conns, ok := p.pool[destination]; ok && len(conns) > 0 {
-			conn := conns[len(conns)-1]
+			connWrap := conns[len(conns)-1]
 			p.pool[destination] = conns[:len(conns)-1]
-			return conn, nil
+			connWrap.lastUsed = time.Now()
+			return connWrap.conn, nil
 		}
 
 		if p.canRequestConn(destination) {
@@ -54,7 +62,8 @@ func (p *ConnPool) Put(destination string, conn net.Conn) {
 	defer p.mu.Unlock()
 
 	if len(p.pool[destination]) < p.maxPerHost {
-		p.pool[destination] = append(p.pool[destination], conn)
+		wrap := connDisposable{conn: conn, lastUsed: time.Now()}
+		p.pool[destination] = append(p.pool[destination], wrap)
 		p.cond.Broadcast()
 	} else {
 		conn.Close()
@@ -62,7 +71,7 @@ func (p *ConnPool) Put(destination string, conn net.Conn) {
 }
 
 func (p *ConnPool) asyncCreateConn(destination string) {
-	conn, err := net.Dial("tcp", destination)
+	conn, err := net.DialTimeout("tcp", destination, 5*time.Second)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.connRequests[destination]--
@@ -73,7 +82,7 @@ func (p *ConnPool) asyncCreateConn(destination string) {
 	}
 
 	if len(p.pool[destination]) < p.maxPerHost {
-		p.pool[destination] = append(p.pool[destination], conn)
+		p.pool[destination] = append(p.pool[destination], connDisposable{conn: conn, lastUsed: time.Now()})
 	} else {
 		conn.Close()
 	}
@@ -84,4 +93,23 @@ func (p *ConnPool) asyncCreateConn(destination string) {
 func (p *ConnPool) canRequestConn(destination string) bool {
 	currentConns := len(p.pool[destination]) + p.connRequests[destination]
 	return currentConns < p.maxPerHost
+}
+
+func (p *ConnPool) cleanupIdleConnections(idleTimeout time.Duration) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		p.mu.Lock()
+		for destination, conns := range p.pool {
+			for i := len(conns) - 1; i >= 0; i-- {
+				if time.Since(conns[i].lastUsed) > idleTimeout {
+					conns[i].conn.Close()
+					conns = append(conns[:i], conns[i+1:]...)
+				}
+			}
+			p.pool[destination] = conns
+		}
+		p.mu.Unlock()
+	}
 }
