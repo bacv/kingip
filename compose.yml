@@ -37,30 +37,38 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    deploy:
+      replicas: 3
     depends_on:
       - relay-red-green
-    entrypoint: /edge -relayAddr relay-red-green:5555 -region red
+    entrypoint: /edge --relayAddr relay-red-green:5555 --region red
 
   edge-green:
     build:
       context: .
       dockerfile: Dockerfile
+    deploy:
+      replicas: 3
     depends_on:
       - relay-red-green
-    entrypoint: /edge -relayAddr relay-red-green:5555 -region green
+    entrypoint: /edge --relayAddr relay-red-green:5555 --region green
 
   edge-blue:
     build:
       context: .
       dockerfile: Dockerfile
+    deploy:
+      replicas: 3
     depends_on:
       - relay-blue-yellow
-    entrypoint: /edge -relayAddr relay-blue-yellow:5555 -region blue
+    entrypoint: /edge --relayAddr relay-blue-yellow:5555 --region blue
 
   edge-yellow:
     build:
       context: .
       dockerfile: Dockerfile
+    deploy:
+      replicas: 3
     depends_on:
       - relay-blue-yellow
-    entrypoint: /edge -relayAddr relay-blue-yellow:5555 -region yellow
+    entrypoint: /edge --relayAddr relay-blue-yellow:5555 --region yellow

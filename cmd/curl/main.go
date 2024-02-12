@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -21,11 +22,11 @@ var (
 )
 
 func main() {
-	flag.IntVar(&parallelCalls, "parallel", 11, "Number of parallel calls")
-	flag.StringVar(&targetURL, "url", "http://httpbin.org/ip", "Target URL to request")
-	flag.StringVar(&proxyURL, "proxy", "http://user:pass@localhost:11700", "Proxy URL")
-	flag.DurationVar(&requestTimeout, "timeout", 10*time.Second, "Request timeout in seconds")
-	flag.Parse()
+	pflag.IntVar(&parallelCalls, "parallel", 11, "Number of parallel calls")
+	pflag.StringVar(&targetURL, "url", "http://httpbin.org/ip", "Target URL to request")
+	pflag.StringVar(&proxyURL, "proxy", "http://user:pass@localhost:11700", "Proxy URL")
+	pflag.DurationVar(&requestTimeout, "timeout", 10*time.Second, "Request timeout in seconds")
+	pflag.Parse()
 
 	startTime := time.Now()
 

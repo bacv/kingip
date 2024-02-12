@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
 	"os"
 	"sync"
 
 	"github.com/bacv/kingip/lib/quic"
 	"github.com/bacv/kingip/svc/edge"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -21,10 +21,10 @@ func main() {
 		region    string
 	)
 
-	flag.StringVar(&hostname, "hostname", "edge", "Hostname of the edge")
-	flag.StringVar(&relayAddr, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
-	flag.StringVar(&region, "region", "red", "Region of the edge")
-	flag.Parse()
+	pflag.StringVar(&hostname, "hostname", "edge", "Hostname of the edge")
+	pflag.StringVar(&relayAddr, "relayAddr", "127.0.0.1:5555", "UDP address for the relay")
+	pflag.StringVar(&region, "region", "red", "Region of the edge")
+	pflag.Parse()
 
 	dialerConfig := quic.DialerConfig{
 		Addr: relayAddr,
