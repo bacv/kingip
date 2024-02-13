@@ -45,6 +45,13 @@ curl -x http://user:pass@localhost:11007 http://httpbin.org/ip -L -v
 curl -x http://user:pass@localhost:11770 http://httpbin.org/ip -L -v
 ```
 
+To connect to host network via the docker compose proxy use `host.docker.internal` instead of `localhost` in the curl request:
+```bash
+# Connects to localhost:8080 on host system
+curl -x http://user:pass@localhost:11770 http://host.docker.internal:8080/test -L -v
+```
+
+
 ## "Curl" util
 
 `cmd/curl` has ability to run multiple requests at once. After building it in `cmd/curl` directory:
