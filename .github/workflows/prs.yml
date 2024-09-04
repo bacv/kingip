@@ -1,0 +1,59 @@
+name: Build and Test
+
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Build Go Binaries
+    runs-on: qourra
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Cache Go Modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            go-mod-
+
+      - name: Install Go Dependencies
+        run: go mod download
+
+      # Build Go binaries
+      - name: Build gateway binary
+        run: |
+          cd cmd/gateway
+          CGO_ENABLED=0 GOOS=linux go build
+
+      - name: Build relay binary
+        run: |
+          cd cmd/relay
+          CGO_ENABLED=0 GOOS=linux go build
+
+      - name: Build edge binary
+        run: |
+          cd cmd/edge
+          CGO_ENABLED=0 GOOS=linux go build
+
+      - name: Build curl binary
+        run: |
+          cd cmd/curl
+          CGO_ENABLED=0 GOOS=linux go build
+
+      # Run tests
+      - name: Run Go Tests
+        run: |
+          go test ./...
