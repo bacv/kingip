@@ -3,12 +3,12 @@ name: Build and Test
 on:
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   build:
     name: Build Go Binaries
-    runs-on: qourra
+    runs-on: self-hosted
 
     steps:
       - name: Checkout Code
