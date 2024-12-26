@@ -71,4 +71,6 @@ services:
       replicas: 3
     depends_on:
       - relay-blue-yellow
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     entrypoint: /edge --relayAddr relay-blue-yellow:5555 --region yellow
